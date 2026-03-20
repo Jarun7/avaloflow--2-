@@ -1,0 +1,168 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Flow {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("draft") // 'active', 'paused', 'draft'
+  nodes       Json     // JSON representation of nodes
+  edges       Json     // JSON representation of connections
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  campaigns   Campaign[]
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   // 'active', 'paused', 'draft'
+  steps       Int
+  updatedAt   DateTime @updatedAt
+  stat        String
+  label       String
+  createdAt   DateTime @default(now())
+  comments    Int      @default(0)
+  sentDms     Int      @default(0)
+  image       String   @default("https://picsum.photos/seed/campaign/400/200")
+  impressions String   @default("0")
+  clicks      String   @default("0")
+  ctr         String   @default("0%")
+  conversions String   @default("0")
+  flowId      String?
+  flow        Flow?    @relation(fields: [flowId], references: [id])
+}
+
+model Audience {
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  tag             String   @default("Member") // 'VIP', 'Lead', 'Member'
+  status          String   @default("offline") // 'online', 'offline'
+  image           String   @default("https://picsum.photos/seed/user/100/100")
+  location        String   @default("Unknown")
+  joinedDate      DateTime @default(now())
+  engagementScore Int      @default(0)
+  ltv             Float    @default(0)
+  openRate        Float    @default(0)
+  eventsCount     Int      @default(0)
+  bio             String?
+  createdAt       DateTime @default(now())
+  history         AudienceHistory[]
+  notes           AudienceNote[]
+  tags            Json?
+}
+
+model AudienceHistory {
+  id          String   @id @default(cuid())
+  audienceId  String
+  audience    Audience @relation(fields: [audienceId], references: [id])
+  icon        String
+  title       String
+  time        DateTime @default(now())
+  desc        String
+  details     Json?
+  color       String
+}
+
+model AudienceNote {
+  id          String   @id @default(cuid())
+  audienceId  String
+  audience    Audience @relation(fields: [audienceId], references: [id])
+  text        String
+  author      String
+  updatedAt   DateTime @updatedAt
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  title     String
+  desc      String
+  time      DateTime @default(now())
+  icon      String
+  color     String
+  category  String   @default("General")
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  name      String
+  type      String
+  date      DateTime @default(now())
+  status    String   // 'Ready', 'Processing'
+  size      String
+}
+
+model Template {
+  id        String   @id @default(cuid())
+  name      String
+  category  String
+  desc      String
+  usage     Int
+  rating    Float    @default(0)
+  icon      String   @default("Zap")
+  color     String   @default("bg-primary/10 text-primary")
+  createdAt DateTime @default(now())
+}
+
+model Asset {
+  id        String   @id @default(cuid())
+  name      String
+  type      String
+  size      String
+  date      DateTime @default(now())
+  url       String
+}
+
+model DashboardStat {
+  id        String   @id @default(cuid())
+  key       String   @unique // 'total_revenue', 'active_campaigns', etc.
+  label     String   @default("Stat")
+  value     String
+  trend     String
+  isPositive Boolean
+  isUp      Boolean  @default(true)
+  icon      String   @default("BarChart3")
+}
+
+model ChartData {
+  id        String   @id @default(cuid())
+  name      String   // 'MON', 'TUE', etc.
+  value     Int
+  order     Int      @default(0)
+  type      String   @default("default") // 'performance', 'channel', etc.
+  color     String?
+}
+
+model Account {
+  id        String   @id @default(cuid())
+  name      String
+  followers String
+  status    String   @default("Active")
+  image     String
+  platform  String   @default("Instagram")
+  createdAt DateTime @default(now())
+}
+
+model Keyword {
+  id        String   @id @default(cuid())
+  text      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  type      String   @default("string") // 'string', 'boolean', 'number'
+}
