@@ -10,7 +10,7 @@ describe('Sidebar', () => {
         <Sidebar />
       </BrowserRouter>
     );
-    expect(screen.getByText('Dashboard')).toBeDefined();
-    expect(screen.getByText('New Automation')).toBeDefined();
+    expect(screen.getByText('AutoDM')).toBeDefined();
+    expect(screen.getByText('Settings')).toBeDefined();
   });
 });

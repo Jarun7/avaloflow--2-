@@ -1,34 +1,19 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Logo } from './Logo';
-import { 
-  LayoutDashboard, 
-  Rocket, 
-  Users, 
-  Zap, 
-  BarChart3, 
-  Settings, 
+import {
+  MessageCircle,
+  BarChart3,
+  Settings,
   HelpCircle,
-  Plus,
-  X,
-  FileText,
-  Activity as ActivityIcon,
-  Layers,
-  Library as LibraryIcon,
-  CreditCard
+  CreditCard,
+  X
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
-  { icon: Rocket, label: 'Campaigns', to: '/campaigns' },
-  { icon: Users, label: 'Audiences', to: '/audiences' },
-  { icon: Zap, label: 'Automations', to: '/automations' },
+  { icon: MessageCircle, label: 'AutoDM', to: '/' },
   { icon: BarChart3, label: 'Analytics', to: '/analytics' },
-  { icon: FileText, label: 'Reports', to: '/reports' },
-  { icon: ActivityIcon, label: 'Activity', to: '/activity' },
-  { icon: Layers, label: 'Templates', to: '/templates' },
-  { icon: LibraryIcon, label: 'Library', to: '/library' },
 ];
 
 const footerItems = [
@@ -53,7 +38,7 @@ export function Sidebar({ onClose, isMobile }: SidebarProps) {
         <div className="px-3 py-6 mb-4 flex items-center justify-between">
           <Logo />
           {isMobile && (
-            <button 
+            <button
               onClick={onClose}
               className="p-2 hover:bg-surface-container-high rounded-full text-on-surface-variant"
             >
@@ -68,25 +53,20 @@ export function Sidebar({ onClose, isMobile }: SidebarProps) {
             <NavLink
               key={item.to}
               to={item.to}
+              end
               onClick={onClose}
               className={({ isActive }) => cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium",
-                isActive 
-                  ? "bg-surface-container-highest text-primary font-bold" 
+                isActive
+                  ? "bg-surface-container-highest text-primary font-bold"
                   : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
               )}
             >
-              <item.icon className={cn("w-5 h-5", item.to === '/' ? "fill-current" : "")} />
+              <item.icon className="w-5 h-5" />
               {item.label}
             </NavLink>
           ))}
         </nav>
-
-        {/* CTA */}
-        <button className="mt-4 primary-gradient text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 shadow-md shadow-primary/20 hover:opacity-90 active:scale-95 transition-all text-sm">
-          <Plus className="w-5 h-5" />
-          New Automation
-        </button>
 
         {/* Footer Navigation */}
         <div className="mt-auto pt-4 border-t border-outline-variant/10 space-y-1">
@@ -97,8 +77,8 @@ export function Sidebar({ onClose, isMobile }: SidebarProps) {
               onClick={onClose}
               className={({ isActive }) => cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium",
-                isActive 
-                  ? "bg-surface-container-highest text-primary font-bold" 
+                isActive
+                  ? "bg-surface-container-highest text-primary font-bold"
                   : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
               )}
             >

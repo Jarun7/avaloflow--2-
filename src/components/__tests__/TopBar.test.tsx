@@ -10,7 +10,6 @@ describe('TopBar', () => {
         <TopBar />
       </BrowserRouter>
     );
-    expect(screen.getByPlaceholderText('Search data...')).toBeDefined();
-    expect(screen.getByText('Launch')).toBeDefined();
+    expect(screen.getByPlaceholderText('Search automations...')).toBeDefined();
   });
 });

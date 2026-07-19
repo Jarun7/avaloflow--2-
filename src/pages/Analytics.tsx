@@ -1,311 +1,279 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  BarChart3, 
-  TrendingUp, 
-  Users, 
-  MousePointer2, 
-  Clock, 
-  ArrowUpRight, 
-  ArrowDownRight,
-  Download,
-  Calendar,
-  Filter,
-  Loader2,
-  Zap,
-  Target
-} from 'lucide-react';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
+import { toast } from 'sonner';
+import {
   BarChart,
   Bar,
-  Cell
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
 } from 'recharts';
+import {
+  Send,
+  Users,
+  Zap,
+  MousePointerClick,
+  Play,
+  Loader2,
+  Image,
+  Film,
+  PlayCircle,
+  Radio,
+  MessageCircle,
+} from 'lucide-react';
 import { cn } from '@/src/lib/utils';
-import { toast } from 'sonner';
+import { ContentItem, ContentType } from '@/src/lib/autodmContent';
+import { SourceType } from '../components/autodm/AutoDmWizard';
 
-interface Stat {
-  label: string;
-  value: string;
-  trend: string;
-  isPositive: boolean;
-  icon: any;
-}
-
-interface ChartData {
-  name: string;
-  value: number;
-  color?: string;
-}
-
-interface Campaign {
+interface AutoDmRecord {
   id: string;
   name: string;
+  sourceType: SourceType;
+  content: ContentItem | null;
   status: string;
-  impressions: string;
-  clicks: string;
-  ctr: string;
-  conversions: string;
+  triggerCount: number;
+  messagesSent: number;
+  uniqueUsers: number;
+  updatedAt: string;
 }
 
-const iconMap: Record<string, any> = {
-  Users,
-  MousePointer2,
-  TrendingUp,
-  Clock,
-  DollarSign: BarChart3, // Fallback or use real icon if available
-  Zap,
-  Target
+interface AutoDmEvent {
+  id: string;
+  autoDmId: string;
+  contactName: string;
+  contactAvatar: string;
+  triggerText: string;
+  messagesSent: number;
+  createdAt: string;
+  autoDm: { name: string; sourceType: SourceType };
+}
+
+const SOURCE_LABEL: Record<SourceType, string> = {
+  post_reel: 'Posts/Reels',
+  story: 'Stories',
+  live: 'IG Live',
+  dm: 'DMs',
+  dm_post: 'DMs your post',
 };
 
+function sourceIcon(type: SourceType) {
+  if (type === 'story') return PlayCircle;
+  if (type === 'live') return Radio;
+  if (type === 'dm' || type === 'dm_post') return MessageCircle;
+  return Image;
+}
+
+function contentTypeIcon(type: ContentType) {
+  if (type === 'reel') return Film;
+  if (type === 'story') return PlayCircle;
+  if (type === 'live') return Radio;
+  return Image;
+}
+
 export function Analytics() {
-  const [stats, setStats] = useState<Stat[]>([]);
-  const [performanceData, setPerformanceData] = useState<ChartData[]>([]);
-  const [channelData, setChannelData] = useState<ChartData[]>([]);
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [automations, setAutomations] = useState<AutoDmRecord[]>([]);
+  const [events, setEvents] = useState<AutoDmEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [simulatingId, setSimulatingId] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const [autoRes, eventsRes] = await Promise.all([
+        fetch('/api/autodm'),
+        fetch('/api/autodm/events'),
+      ]);
+      const autoData = await autoRes.json();
+      const eventsData = await eventsRes.json();
+      setAutomations(Array.isArray(autoData) ? autoData : []);
+      setEvents(Array.isArray(eventsData) ? eventsData : []);
+    } catch (error) {
+      console.error('Failed to load analytics:', error);
+      toast.error('Failed to load analytics');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [statsRes, perfRes, chanRes, campRes] = await Promise.all([
-          fetch('/api/stats'),
-          fetch('/api/chart-data?type=performance'),
-          fetch('/api/chart-data?type=channel'),
-          fetch('/api/campaigns')
-        ]);
-
-        if (!statsRes.ok || !perfRes.ok || !chanRes.ok || !campRes.ok) {
-          throw new Error('Failed to fetch analytics data');
-        }
-
-        const [statsData, perfData, chanData, campData] = await Promise.all([
-          statsRes.json(),
-          perfRes.json(),
-          chanRes.json(),
-          campRes.json()
-        ]);
-
-        // Map stats with icons
-        const mappedStats = statsData.map((s: any) => ({
-          ...s,
-          icon: iconMap[s.icon] || BarChart3
-        }));
-
-        setStats(mappedStats);
-        setPerformanceData(perfData);
-        setChannelData(chanData);
-        setCampaigns(campData);
-      } catch (error) {
-        console.error('Error fetching analytics:', error);
-        toast.error('Failed to load analytics data');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
+    load();
   }, []);
+
+  const simulate = async (id: string) => {
+    setSimulatingId(id);
+    try {
+      const res = await fetch(`/api/autodm/${id}/simulate`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to simulate');
+      toast.success('New activity simulated');
+      await load();
+    } catch (error) {
+      toast.error('Failed to simulate activity');
+    } finally {
+      setSimulatingId(null);
+    }
+  };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
 
+  const totalAutomations = automations.length;
+  const activeAutomations = automations.filter(a => a.status === 'active').length;
+  const totalMessages = automations.reduce((sum, a) => sum + a.messagesSent, 0);
+  const totalUsers = automations.reduce((sum, a) => sum + a.uniqueUsers, 0);
+  const totalTriggers = automations.reduce((sum, a) => sum + a.triggerCount, 0);
+
+  const chartData = automations
+    .slice()
+    .sort((a, b) => b.messagesSent - a.messagesSent)
+    .slice(0, 8)
+    .map(a => ({ name: a.name.length > 14 ? a.name.slice(0, 14) + '…' : a.name, value: a.messagesSent }));
+
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-12">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="font-headline text-3xl font-extrabold text-on-surface">Analytics Insights</h1>
-          <p className="text-on-surface-variant mt-1">Deep dive into your marketing performance and growth metrics.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-surface-container-low border border-outline-variant/10 rounded-xl text-sm font-bold text-on-surface hover:bg-surface-container-high transition-all">
-            <Calendar className="w-4 h-4" />
-            Last 30 Days
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-on-primary-fixed-variant text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/10 hover:opacity-90 transition-all">
-            <Download className="w-4 h-4" />
-            Export Report
-          </button>
-        </div>
+    <div className="max-w-7xl mx-auto space-y-8">
+      <div>
+        <h1 className="font-headline text-2xl font-extrabold text-on-surface">Analytics</h1>
+        <p className="text-sm text-on-surface-variant mt-1">Every message sent, every person reached — all your AutoDM activity in one place.</p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, idx) => (
-          <div key={idx} className="bg-surface-container-lowest p-6 rounded-2xl no-line-card border border-outline-variant/10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-surface-container-low rounded-lg text-primary">
-                <stat.icon className="w-5 h-5" />
-              </div>
-              <div className={cn(
-                "flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full",
-                stat.isPositive ? "bg-emerald-50 text-emerald-600" : "bg-error-container text-error"
-              )}>
-                {stat.isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                {stat.trend}
-              </div>
-            </div>
-            <p className="text-on-surface-variant text-sm font-medium">{stat.label}</p>
-            <h3 className="text-2xl font-headline font-extrabold text-on-surface mt-1">{stat.value}</h3>
-          </div>
-        ))}
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <StatCard icon={Zap} label="Automations" value={totalAutomations} />
+        <StatCard icon={Play} label="Active now" value={activeAutomations} accent="emerald" />
+        <StatCard icon={Send} label="Messages sent" value={totalMessages} accent="primary" />
+        <StatCard icon={Users} label="Users reached" value={totalUsers} />
+        <StatCard icon={MousePointerClick} label="Total triggers" value={totalTriggers} />
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Performance Chart */}
-        <div className="lg:col-span-2 bg-surface-container-lowest p-8 rounded-2xl no-line-card border border-outline-variant/10">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h3 className="font-headline text-xl font-bold text-on-surface">Growth Performance</h3>
-              <p className="text-on-surface-variant text-sm">Audience acquisition over time</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-on-surface-variant">
-                <span className="w-3 h-3 rounded-full bg-primary"></span>
-                Current
-              </div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-on-surface-variant ml-4">
-                <span className="w-3 h-3 rounded-full bg-surface-container-highest"></span>
-                Previous
-              </div>
-            </div>
-          </div>
-          
-          <div className="h-[300px] w-full">
+      {/* Chart */}
+      <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-2xl p-6">
+        <h3 className="font-headline text-base font-extrabold text-on-surface mb-1">Messages sent by automation</h3>
+        <p className="text-xs text-on-surface-variant mb-4">Top performing automations, by volume.</p>
+        {chartData.length === 0 ? (
+          <p className="text-sm text-on-surface-variant py-12 text-center">No activity yet — simulate some below to see it here.</p>
+        ) : (
+          <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={performanceData}>
-                <defs>
-                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0058c3" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#0058c3" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#c1c6d7" opacity={0.2} />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 12, fontWeight: 600, fill: '#414754' }}
-                  dy={10}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 12, fontWeight: 600, fill: '#414754' }}
-                />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', padding: '12px' }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#0058c3" 
-                  strokeWidth={3}
-                  fillOpacity={1} 
-                  fill="url(#colorValue)" 
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Channel Distribution */}
-        <div className="bg-surface-container-lowest p-8 rounded-2xl no-line-card border border-outline-variant/10">
-          <h3 className="font-headline text-xl font-bold text-on-surface mb-2">Channel Split</h3>
-          <p className="text-on-surface-variant text-sm mb-8">Distribution of engagement by platform</p>
-          
-          <div className="h-[240px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={channelData} layout="vertical" margin={{ left: -20 }}>
-                <XAxis type="number" hide />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 12, fontWeight: 700, fill: '#0d1c2e' }}
-                />
-                <Tooltip 
-                  cursor={{ fill: 'transparent' }}
+              <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                <Tooltip
+                  cursor={{ fill: 'rgba(0, 88, 195, 0.05)' }}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                 />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
-                  {channelData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color || '#0058c3'} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#414754' }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#414754' }} allowDecimals={false} />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={36}>
+                  {chartData.map((_, index) => (
+                    <Cell key={index} fill={index === 0 ? '#0058c3' : '#a6c1fe'} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
+        )}
+      </div>
 
-          <div className="mt-6 space-y-3">
-            {channelData.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color || '#0058c3' }}></div>
-                  <span className="text-sm font-medium text-on-surface-variant">{item.name}</span>
+      {/* Per-automation records */}
+      <div>
+        <h3 className="font-headline text-lg font-extrabold text-on-surface mb-1">Automation records</h3>
+        <p className="text-xs text-on-surface-variant mb-4">Every automation you've launched, with its lifetime metrics.</p>
+        {automations.length === 0 ? (
+          <p className="text-sm text-on-surface-variant py-8 text-center bg-surface-container-lowest border border-outline-variant/10 rounded-2xl">
+            No automations yet — head to the AutoDM home page to create one.
+          </p>
+        ) : (
+          <div className="space-y-2.5">
+            {automations.map(a => {
+              const Icon = sourceIcon(a.sourceType);
+              return (
+                <div key={a.id} className="flex items-center justify-between gap-4 bg-surface-container-lowest border border-outline-variant/10 rounded-2xl p-4">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {a.content ? (
+                      <img src={a.content.thumbnail} alt="" className="w-11 h-11 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-11 h-11 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <Icon className="w-5 h-5 text-primary" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-on-surface truncate">{a.name}</p>
+                      <p className="text-xs text-on-surface-variant">{SOURCE_LABEL[a.sourceType]} · Updated {new Date(a.updatedAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="hidden sm:flex items-center gap-6 flex-shrink-0">
+                    <MiniStat label="Triggers" value={a.triggerCount} />
+                    <MiniStat label="Messages" value={a.messagesSent} />
+                    <MiniStat label="Users" value={a.uniqueUsers} />
+                  </div>
+
+                  <button
+                    onClick={() => simulate(a.id)}
+                    disabled={simulatingId === a.id}
+                    className="px-3 py-2 bg-surface-container-highest text-primary text-xs font-bold rounded-xl hover:opacity-90 transition-all disabled:opacity-60 flex items-center gap-1.5 flex-shrink-0"
+                  >
+                    {simulatingId === a.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                    Simulate
+                  </button>
                 </div>
-                <span className="text-sm font-bold text-on-surface">{item.value}%</span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Recent activity log */}
+      <div>
+        <h3 className="font-headline text-lg font-extrabold text-on-surface mb-1">Recent activity</h3>
+        <p className="text-xs text-on-surface-variant mb-4">Individual triggers, most recent first.</p>
+        {events.length === 0 ? (
+          <p className="text-sm text-on-surface-variant py-8 text-center bg-surface-container-lowest border border-outline-variant/10 rounded-2xl">
+            Nothing logged yet.
+          </p>
+        ) : (
+          <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-2xl overflow-hidden">
+            {events.map((e, idx) => (
+              <div key={e.id} className={cn('flex items-center gap-3 p-3.5', idx !== events.length - 1 && 'border-b border-outline-variant/10')}>
+                <img src={e.contactAvatar} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-on-surface">
+                    <span className="font-bold">{e.contactName}</span> triggered <span className="font-bold">{e.autoDm.name}</span>
+                  </p>
+                  <p className="text-[10px] text-on-surface-variant truncate">"{e.triggerText}" · {e.messagesSent} message{e.messagesSent === 1 ? '' : 's'} sent</p>
+                </div>
+                <span className="text-[10px] text-on-surface-variant flex-shrink-0">{new Date(e.createdAt).toLocaleString()}</span>
               </div>
             ))}
           </div>
-        </div>
+        )}
       </div>
+    </div>
+  );
+}
 
-      {/* Detailed Metrics Table */}
-      <div className="bg-surface-container-lowest rounded-2xl no-line-card border border-outline-variant/10 overflow-hidden">
-        <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
-          <h3 className="font-headline text-xl font-bold text-on-surface">Campaign Breakdown</h3>
-          <button className="p-2 hover:bg-surface-container-low rounded-lg transition-colors">
-            <Filter className="w-5 h-5 text-on-surface-variant" />
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-surface-container-low/50">
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Campaign Name</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Status</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Impressions</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Clicks</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">CTR</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Conversions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/10">
-              {campaigns.map((row) => (
-                <tr key={row.id} className="hover:bg-surface-container-low/30 transition-colors">
-                  <td className="px-6 py-4 font-bold text-on-surface">{row.name}</td>
-                  <td className="px-6 py-4">
-                    <span className={cn(
-                      "px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                      row.status.toLowerCase() === 'active' ? "bg-emerald-50 text-emerald-600" : "bg-surface-container-high text-on-surface-variant"
-                    )}>
-                      {row.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-on-surface-variant">{row.impressions}</td>
-                  <td className="px-6 py-4 text-sm text-on-surface-variant">{row.clicks}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-primary">{row.ctr}</td>
-                  <td className="px-6 py-4 text-sm text-on-surface-variant">{row.conversions}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+function StatCard({ icon: Icon, label, value, accent }: { icon: typeof Send; label: string; value: number; accent?: 'primary' | 'emerald' }) {
+  return (
+    <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-2xl p-4 shadow-sm">
+      <div className={cn(
+        'w-9 h-9 rounded-xl flex items-center justify-center mb-3',
+        accent === 'emerald' ? 'bg-emerald-500/10 text-emerald-600' : accent === 'primary' ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-on-surface-variant'
+      )}>
+        <Icon className="w-4 h-4" />
       </div>
+      <p className="font-headline text-2xl font-extrabold text-on-surface">{value.toLocaleString()}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mt-1">{label}</p>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="text-center">
+      <p className="text-sm font-bold text-on-surface">{value}</p>
+      <p className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant">{label}</p>
     </div>
   );
 }

@@ -3,8 +3,8 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    const stats = await prisma.dashboardStat.findMany();
-    console.log('Stats:', stats);
+    const accounts = await prisma.account.findMany();
+    console.log('Accounts:', accounts);
   } catch (e) {
     console.error('Error:', e);
   } finally {

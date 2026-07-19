@@ -47,12 +47,21 @@ export function Settings() {
   // Modal states
   const [deleteKeywordId, setDeleteKeywordId] = useState<string | null>(null);
   const [disconnectAccountId, setDisconnectAccountId] = useState<string | null>(null);
-  const [isAddingAccount, setIsAddingAccount] = useState(false);
-  const [newAccountName, setNewAccountName] = useState('');
-  const [isSubmittingAccount, setIsSubmittingAccount] = useState(false);
+  const [isConnectingAccount, setIsConnectingAccount] = useState(false);
 
   useEffect(() => {
     fetchSettingsData();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('meta_connected')) {
+      toast.success('Instagram account connected successfully');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    const metaError = params.get('meta_error');
+    if (metaError) {
+      toast.error(metaError);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const fetchSettingsData = async () => {
@@ -187,36 +196,21 @@ export function Settings() {
     }
   };
 
-  const handleAddAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAccountName.trim()) return;
-
+  const handleConnectAccount = async () => {
     try {
-      setIsSubmittingAccount(true);
-      const response = await fetch('/api/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newAccountName.trim(),
-          followers: '0',
-          status: 'Active',
-          image: `https://picsum.photos/seed/${newAccountName.trim()}/100/100`,
-          platform: 'Instagram'
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to add account');
-      
-      const account = await response.json();
-      setAccounts(prev => [...prev, account]);
-      setNewAccountName('');
-      setIsAddingAccount(false);
-      toast.success('Account connected successfully');
+      setIsConnectingAccount(true);
+      const res = await fetch('/api/meta/status');
+      const { configured } = await res.json();
+      if (!configured) {
+        toast.error('Meta app is not configured yet. Add META_APP_ID / META_APP_SECRET to the server .env file first.');
+        return;
+      }
+      window.location.href = '/api/meta/connect';
     } catch (error) {
-      console.error('Error adding account:', error);
-      toast.error('Failed to connect account');
+      console.error('Error starting Meta connect flow:', error);
+      toast.error('Failed to start Instagram connection');
     } finally {
-      setIsSubmittingAccount(false);
+      setIsConnectingAccount(false);
     }
   };
 
@@ -247,12 +241,13 @@ export function Settings() {
                 <h3 className="font-headline text-xl font-bold text-on-surface">Connected Accounts</h3>
                 <p className="text-on-surface-variant text-sm mt-1">Manage the Instagram profiles linked to Avaloflow.</p>
               </div>
-              <button 
-                onClick={() => setIsAddingAccount(true)}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-surface-container-high text-on-primary-fixed-variant font-bold rounded-xl hover:bg-surface-container-highest transition-all active:scale-95 text-sm"
+              <button
+                onClick={handleConnectAccount}
+                disabled={isConnectingAccount}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-surface-container-high text-on-primary-fixed-variant font-bold rounded-xl hover:bg-surface-container-highest transition-all active:scale-95 text-sm disabled:opacity-50"
               >
-                <Link className="w-4 h-4" />
-                Connect New
+                {isConnectingAccount ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link className="w-4 h-4" />}
+                Connect with Facebook
               </button>
             </div>
 
@@ -500,46 +495,6 @@ export function Settings() {
         confirmLabel="Disconnect"
         onConfirm={handleDisconnectAccount}
       />
-
-      {isAddingAccount && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-surface-container-lowest rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl border border-outline-variant/20">
-            <h3 className="text-xl font-headline font-bold text-on-surface mb-2">Connect Instagram Account</h3>
-            <p className="text-sm text-on-surface-variant mb-6">Enter the username of the Instagram account you want to connect.</p>
-            
-            <form onSubmit={handleAddAccount}>
-              <div className="mb-6">
-                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-2">Instagram Username</label>
-                <input 
-                  type="text"
-                  value={newAccountName}
-                  onChange={(e) => setNewAccountName(e.target.value)}
-                  placeholder="@username"
-                  className="w-full px-4 py-3 bg-surface-container-low border border-outline-variant/30 rounded-xl text-sm font-medium focus:outline-none focus:border-primary transition-colors"
-                  autoFocus
-                />
-              </div>
-              
-              <div className="flex gap-3">
-                <button 
-                  type="button"
-                  onClick={() => setIsAddingAccount(false)}
-                  className="flex-1 py-3 text-on-surface-variant font-bold text-xs uppercase tracking-widest hover:bg-surface-container-low rounded-xl transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isSubmittingAccount || !newAccountName.trim()}
-                  className="flex-1 py-3 bg-primary text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:shadow-lg hover:shadow-primary/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isSubmittingAccount ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Connect'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

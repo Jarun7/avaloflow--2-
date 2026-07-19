@@ -1,9 +1,17 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import crypto from "crypto";
 import { PrismaClient } from "@prisma/client";
 import cors from "cors";
 import dotenv from "dotenv";
+import {
+  isMetaConfigured,
+  getLoginUrl,
+  exchangeCodeForUserToken,
+  getLongLivedUserToken,
+  resolveConnectedInstagramAccounts,
+} from "./server/meta";
 
 dotenv.config({ override: true });
 
@@ -17,354 +25,20 @@ async function startServer() {
   app.use(express.json());
 
   // API Routes
-  app.get("/api/stats", async (req, res) => {
-    try {
-      const stats = await prisma.dashboardStat.findMany();
-      res.json(stats);
-    } catch (error: any) {
-      console.error("Error fetching stats:", error);
-      res.status(500).json({ error: "Failed to fetch stats", details: error.message });
-    }
-  });
-
-  app.get("/api/chart-data", async (req, res) => {
-    const { type } = req.query;
-    try {
-      const chartData = await prisma.chartData.findMany({
-        where: type ? { type: String(type) } : undefined,
-        orderBy: { order: 'asc' }
-      });
-      res.json(chartData);
-    } catch (error) {
-      console.error("Error fetching chart data:", error);
-      res.status(500).json({ error: "Failed to fetch chart data" });
-    }
-  });
-
-  app.get("/api/campaigns", async (req, res) => {
-    try {
-      const campaigns = await prisma.campaign.findMany({
-        orderBy: { updatedAt: 'desc' },
-        include: { flow: true }
-      });
-      res.json(campaigns);
-    } catch (error) {
-      console.error("Error fetching campaigns:", error);
-      res.status(500).json({ error: "Failed to fetch campaigns" });
-    }
-  });
-
-  app.post("/api/campaigns", async (req, res) => {
-    try {
-      const campaign = await prisma.campaign.create({
-        data: req.body
-      });
-
-      // Increment active_campaigns stat
-      const activeStat = await prisma.dashboardStat.findUnique({ where: { key: 'active_campaigns' } });
-      if (activeStat) {
-        const currentActive = parseInt(activeStat.value.replace(/,/g, '') || '0');
-        await prisma.dashboardStat.update({
-          where: { key: 'active_campaigns' },
-          data: { value: (currentActive + 1).toString() }
-        });
-      }
-
-      res.json(campaign);
-    } catch (error) {
-      console.error("Error creating campaign:", error);
-      res.status(500).json({ error: "Failed to create campaign" });
-    }
-  });
-
-  app.delete("/api/campaigns/:id", async (req, res) => {
-    try {
-      await prisma.campaign.delete({
-        where: { id: req.params.id }
-      });
-
-      // Decrement active_campaigns stat
-      const activeStat = await prisma.dashboardStat.findUnique({ where: { key: 'active_campaigns' } });
-      if (activeStat) {
-        const currentActive = parseInt(activeStat.value.replace(/,/g, '') || '0');
-        await prisma.dashboardStat.update({
-          where: { key: 'active_campaigns' },
-          data: { value: Math.max(0, currentActive - 1).toString() }
-        });
-      }
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error deleting campaign:", error);
-      res.status(500).json({ error: "Failed to delete campaign" });
-    }
-  });
-
-  app.post("/api/campaigns/:id/simulate", async (req, res) => {
-    try {
-      const campaignId = req.params.id;
-      const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
-      
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const newDms = Math.floor(Math.random() * 50) + 10;
-      const newComments = Math.floor(Math.random() * 20) + 5;
-
-      const updatedCampaign = await prisma.campaign.update({
-        where: { id: campaignId },
-        data: {
-          status: 'active',
-          sentDms: { increment: newDms },
-          comments: { increment: newComments },
-          stat: 'Active',
-        }
-      });
-
-      // Update Dashboard Stats
-      const audienceStat = await prisma.dashboardStat.findUnique({ where: { key: 'total_audience' } });
-      if (audienceStat) {
-        const currentAudience = parseInt(audienceStat.value.replace(/,/g, '') || '0');
-        const newAudience = currentAudience + newDms;
-        await prisma.dashboardStat.update({
-          where: { key: 'total_audience' },
-          data: { value: newAudience.toLocaleString() }
-        });
-      }
-
-      // Add Activity Log
-      await prisma.activity.create({
-        data: {
-          title: `Campaign Executed: ${campaign.name}`,
-          desc: `Sent ${newDms} DMs and replied to ${newComments} comments.`,
-          icon: 'Rocket',
-          color: 'bg-primary',
-          category: 'Automation'
-        }
-      });
-
-      res.json(updatedCampaign);
-    } catch (error) {
-      console.error("Error simulating campaign:", error);
-      res.status(500).json({ error: "Failed to simulate campaign" });
-    }
-  });
-
-  app.put("/api/campaigns/:id", async (req, res) => {
-    try {
-      const campaign = await prisma.campaign.update({
-        where: { id: req.params.id },
-        data: req.body
-      });
-      res.json(campaign);
-    } catch (error) {
-      console.error("Error updating campaign:", error);
-      res.status(500).json({ error: "Failed to update campaign" });
-    }
-  });
-
-  app.delete("/api/campaigns/:id", async (req, res) => {
-    try {
-      await prisma.campaign.delete({
-        where: { id: req.params.id }
-      });
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error deleting campaign:", error);
-      res.status(500).json({ error: "Failed to delete campaign" });
-    }
-  });
-
-  app.get("/api/audiences", async (req, res) => {
-    try {
-      const audiences = await prisma.audience.findMany({
-        include: {
-          history: { orderBy: { time: 'desc' } },
-          notes: { orderBy: { updatedAt: 'desc' } }
-        }
-      });
-      
-      const parsedAudiences = audiences.map(audience => ({
-        ...audience,
-        tags: typeof audience.tags === 'string' ? JSON.parse(audience.tags) : audience.tags,
-        history: audience.history.map(h => ({
-          ...h,
-          details: typeof h.details === 'string' ? JSON.parse(h.details) : h.details
-        }))
-      }));
-      
-      res.json(parsedAudiences);
-    } catch (error: any) {
-      console.error("Error fetching audiences:", error);
-      res.status(500).json({ error: "Failed to fetch audiences", details: error.message });
-    }
-  });
-
-  app.get("/api/activity", async (req, res) => {
-    try {
-      const activity = await prisma.activity.findMany({
-        orderBy: { time: 'desc' },
-        take: 10
-      });
-      res.json(activity);
-    } catch (error) {
-      console.error("Error fetching activity:", error);
-      res.status(500).json({ error: "Failed to fetch activity" });
-    }
-  });
-
-  app.post("/api/activity", async (req, res) => {
-    try {
-      const activity = await prisma.activity.create({
-        data: req.body
-      });
-      res.json(activity);
-    } catch (error) {
-      console.error("Error creating activity:", error);
-      res.status(500).json({ error: "Failed to create activity" });
-    }
-  });
-
-  app.get("/api/reports", async (req, res) => {
-    try {
-      const reports = await prisma.report.findMany({
-        orderBy: { date: 'desc' }
-      });
-      res.json(reports);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch reports" });
-    }
-  });
-
-  app.post("/api/reports", async (req, res) => {
-    try {
-      const report = await prisma.report.create({
-        data: req.body
-      });
-      res.json(report);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create report" });
-    }
-  });
-
-  app.delete("/api/reports/:id", async (req, res) => {
-    try {
-      await prisma.report.delete({
-        where: { id: req.params.id }
-      });
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to delete report" });
-    }
-  });
-
-  app.get("/api/templates", async (req, res) => {
-    try {
-      const templates = await prisma.template.findMany({
-        orderBy: { usage: 'desc' }
-      });
-      res.json(templates);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch templates" });
-    }
-  });
-
-  app.post("/api/templates", async (req, res) => {
-    try {
-      const { name, desc, category, icon } = req.body;
-      if (!name || !desc || !category) {
-        return res.status(400).json({ error: "Name, description, and category are required" });
-      }
-      const template = await prisma.template.create({
-        data: {
-          name: String(name).trim(),
-          desc: String(desc).trim(),
-          category: String(category).trim(),
-          icon: String(icon || 'Zap').trim(),
-          color: "bg-primary/10 text-primary",
-          usage: 0,
-          rating: 0,
-        }
-      });
-      res.status(201).json(template);
-    } catch (error) {
-      console.error("Failed to create template:", error);
-      res.status(500).json({ error: "Failed to create template" });
-    }
-  });
-
-  app.get("/api/flows", async (req, res) => {
-    try {
-      const flows = await prisma.flow.findMany({
-        orderBy: { updatedAt: 'desc' }
-      });
-      res.json(flows);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch flows" });
-    }
-  });
-
-  app.get("/api/flows/:id", async (req, res) => {
-    try {
-      const flow = await prisma.flow.findUnique({
-        where: { id: req.params.id }
-      });
-      if (!flow) return res.status(404).json({ error: "Flow not found" });
-      res.json(flow);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch flow" });
-    }
-  });
-
-  app.post("/api/flows", async (req, res) => {
-    try {
-      const flow = await prisma.flow.create({
-        data: req.body
-      });
-      res.json(flow);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create flow" });
-    }
-  });
-
-  app.put("/api/flows/:id", async (req, res) => {
-    try {
-      const flow = await prisma.flow.update({
-        where: { id: req.params.id },
-        data: req.body
-      });
-      res.json(flow);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update flow" });
-    }
-  });
-
-  app.delete("/api/flows/:id", async (req, res) => {
-    try {
-      await prisma.flow.delete({
-        where: { id: req.params.id }
-      });
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to delete flow" });
-    }
-  });
-
-  app.get("/api/library", async (req, res) => {
-    try {
-      const assets = await prisma.asset.findMany({
-        orderBy: { date: 'desc' }
-      });
-      res.json(assets);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch library assets" });
-    }
-  });
-
   app.get("/api/accounts", async (req, res) => {
     try {
-      const accounts = await prisma.account.findMany();
+      const accounts = await prisma.account.findMany({
+        select: {
+          id: true,
+          name: true,
+          followers: true,
+          status: true,
+          image: true,
+          platform: true,
+          igUserId: true,
+          createdAt: true,
+        },
+      });
       res.json(accounts);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch accounts" });
@@ -390,6 +64,89 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete account" });
+    }
+  });
+
+  // --- Meta (Instagram/Facebook) OAuth connect flow ---
+
+  function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (!cookieHeader) return out;
+    for (const part of cookieHeader.split(";")) {
+      const idx = part.indexOf("=");
+      if (idx === -1) continue;
+      out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+    }
+    return out;
+  }
+
+  app.get("/api/meta/status", (req, res) => {
+    res.json({ configured: isMetaConfigured() });
+  });
+
+  app.get("/api/meta/connect", (req, res) => {
+    if (!isMetaConfigured()) {
+      return res.status(500).json({ error: "Meta app is not configured. Set META_APP_ID, META_APP_SECRET, META_REDIRECT_URI." });
+    }
+    const state = crypto.randomBytes(16).toString("hex");
+    res.setHeader("Set-Cookie", `meta_oauth_state=${state}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax`);
+    res.redirect(getLoginUrl(state));
+  });
+
+  app.get("/api/meta/callback", async (req, res) => {
+    const { code, state, error, error_description } = req.query as Record<string, string>;
+
+    if (error) {
+      return res.redirect(`/settings?meta_error=${encodeURIComponent(error_description || error)}`);
+    }
+
+    const cookies = parseCookies(req.headers.cookie);
+    if (!state || !cookies.meta_oauth_state || state !== cookies.meta_oauth_state) {
+      return res.redirect(`/settings?meta_error=${encodeURIComponent("Invalid OAuth state")}`);
+    }
+    res.setHeader("Set-Cookie", "meta_oauth_state=; HttpOnly; Path=/; Max-Age=0");
+
+    try {
+      const shortLived = await exchangeCodeForUserToken(code);
+      const longLived = await getLongLivedUserToken(shortLived.access_token);
+      const igAccounts = await resolveConnectedInstagramAccounts(longLived.access_token);
+
+      if (igAccounts.length === 0) {
+        return res.redirect(`/settings?meta_error=${encodeURIComponent("No Instagram Business account found on your Facebook Pages")}`);
+      }
+
+      const expiresAt = new Date(Date.now() + longLived.expires_in * 1000);
+
+      await Promise.all(igAccounts.map((acc) =>
+        prisma.account.upsert({
+          where: { igUserId: acc.igUserId },
+          update: {
+            name: acc.profile.username,
+            followers: String(acc.profile.followers_count ?? 0),
+            image: acc.profile.profile_picture_url || "",
+            status: "Active",
+            pageId: acc.pageId,
+            pageAccessToken: acc.pageAccessToken,
+            tokenExpiresAt: expiresAt,
+          },
+          create: {
+            name: acc.profile.username,
+            followers: String(acc.profile.followers_count ?? 0),
+            image: acc.profile.profile_picture_url || "",
+            status: "Active",
+            platform: "Instagram",
+            igUserId: acc.igUserId,
+            pageId: acc.pageId,
+            pageAccessToken: acc.pageAccessToken,
+            tokenExpiresAt: expiresAt,
+          },
+        })
+      ));
+
+      res.redirect("/settings?meta_connected=1");
+    } catch (err) {
+      console.error("Error completing Meta OAuth flow:", err);
+      res.redirect(`/settings?meta_error=${encodeURIComponent("Failed to connect Instagram account")}`);
     }
   });
 
@@ -440,7 +197,7 @@ async function startServer() {
       const { settings } = req.body; // Array of { key, value }
       if (!Array.isArray(settings)) return res.status(400).json({ error: "Settings array is required" });
 
-      const updates = settings.map(s => 
+      const updates = settings.map(s =>
         prisma.setting.update({
           where: { key: s.key },
           data: { value: String(s.value) }
@@ -452,6 +209,116 @@ async function startServer() {
       res.json(updatedSettings);
     } catch (error) {
       res.status(500).json({ error: "Failed to update settings" });
+    }
+  });
+
+  app.get("/api/autodm", async (req, res) => {
+    try {
+      const automations = await prisma.autoDm.findMany({
+        orderBy: { updatedAt: 'desc' }
+      });
+      res.json(automations);
+    } catch (error) {
+      console.error("Error fetching autodm automations:", error);
+      res.status(500).json({ error: "Failed to fetch automations" });
+    }
+  });
+
+  app.post("/api/autodm", async (req, res) => {
+    try {
+      const automation = await prisma.autoDm.create({
+        data: req.body
+      });
+      res.status(201).json(automation);
+    } catch (error) {
+      console.error("Error creating autodm automation:", error);
+      res.status(500).json({ error: "Failed to create automation" });
+    }
+  });
+
+  app.put("/api/autodm/:id", async (req, res) => {
+    try {
+      const automation = await prisma.autoDm.update({
+        where: { id: req.params.id },
+        data: req.body
+      });
+      res.json(automation);
+    } catch (error) {
+      console.error("Error updating autodm automation:", error);
+      res.status(500).json({ error: "Failed to update automation" });
+    }
+  });
+
+  app.delete("/api/autodm/:id", async (req, res) => {
+    try {
+      await prisma.autoDm.delete({
+        where: { id: req.params.id }
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting autodm automation:", error);
+      res.status(500).json({ error: "Failed to delete automation" });
+    }
+  });
+
+  app.get("/api/autodm/events", async (req, res) => {
+    try {
+      const events = await prisma.autoDmEvent.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        include: { autoDm: { select: { name: true, sourceType: true } } }
+      });
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching autodm events:", error);
+      res.status(500).json({ error: "Failed to fetch events" });
+    }
+  });
+
+  const MOCK_CONTACTS = [
+    { name: 'ava.rivers', avatar: 'https://picsum.photos/seed/contact1/100/100' },
+    { name: 'jordan.k', avatar: 'https://picsum.photos/seed/contact2/100/100' },
+    { name: 'mia_bakes', avatar: 'https://picsum.photos/seed/contact3/100/100' },
+    { name: 'sam.creates', avatar: 'https://picsum.photos/seed/contact4/100/100' },
+    { name: 'noah_eats', avatar: 'https://picsum.photos/seed/contact5/100/100' },
+  ];
+
+  app.post("/api/autodm/:id/simulate", async (req, res) => {
+    try {
+      const automation = await prisma.autoDm.findUnique({ where: { id: req.params.id } });
+      if (!automation) return res.status(404).json({ error: "Automation not found" });
+
+      const contact = MOCK_CONTACTS[Math.floor(Math.random() * MOCK_CONTACTS.length)];
+      const keywords = Array.isArray(automation.keywords) ? automation.keywords as string[] : [];
+      const triggerText = automation.triggerMode === 'any'
+        ? "Loved this! 😍"
+        : (keywords[Math.floor(Math.random() * keywords.length)] || "info");
+      const messagesSent = 1 + (automation.askFollow ? 1 : 0) + (automation.askEmail ? 1 : 0);
+
+      const [event, updated] = await Promise.all([
+        prisma.autoDmEvent.create({
+          data: {
+            autoDmId: automation.id,
+            contactName: contact.name,
+            contactAvatar: contact.avatar,
+            triggerText,
+            messagesSent,
+          }
+        }),
+        prisma.autoDm.update({
+          where: { id: automation.id },
+          data: {
+            triggerCount: { increment: 1 },
+            messagesSent: { increment: messagesSent },
+            uniqueUsers: { increment: 1 },
+          }
+        })
+      ]);
+
+      res.json({ event, automation: updated });
+    } catch (error) {
+      console.error("Error simulating autodm activity:", error);
+      res.status(500).json({ error: "Failed to simulate activity" });
     }
   });
 
